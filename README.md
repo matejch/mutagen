@@ -2,6 +2,8 @@
 
 Mutation testing engine for Go. Mutates your code, runs your tests, and reports which changes your tests failed to catch. ([What is mutation testing?](#what-is-mutation-testing))
 
+![HTML report screenshot](screenshot.png)
+
 ## Install
 
 ```
