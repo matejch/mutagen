@@ -1,6 +1,6 @@
 # mutagen
 
-Mutation testing engine for Go. Systematically mutates your source code (flips operators, removes nil checks, swaps boolean values, empties branches) and runs tests against each mutant. Mutations that survive — where tests still pass despite the change — reveal where your test suite is weak. Supports 9 mutation operators, parallel execution with `-overlay` isolation, coverage-guided filtering, incremental caching, per-test coverage mapping, diff-only mode, and arid-line detection.
+Mutation testing engine for Go. Mutates your code, runs your tests, and reports which changes your tests failed to catch. ([What is mutation testing?](#what-is-mutation-testing))
 
 ## Install
 
@@ -38,3 +38,13 @@ Use `-html report.html` to generate a source-annotated HTML report. Files are so
 ## Config
 
 Copy `mutagen.example.yaml` to `.mutagen.yaml` in your project root. All fields are optional — CLI flags override the config file. Uncomment `mutators` to restrict which operators run, or `diff` to always run in diff-only mode.
+
+## What is mutation testing?
+
+Code coverage tells you which lines your tests execute. It does not tell you whether your tests actually check anything. **A test that calls a function and ignores the result gets 100% coverage and catches zero bugs.**
+
+Mutation testing answers a harder question: if I change this code, does any test break? The tool makes small, systematic changes to your source — replacing `+` with `-`, swapping `==` for `!=`, removing an `if err != nil` guard — and runs your test suite against each change. If every test still passes after a change, that mutation "survived," meaning your tests don't verify that behavior. If a test fails, the mutation was "killed," meaning your tests caught it.
+
+The kill rate (killed / total tested) is a more honest measure of test quality than coverage. A codebase with 90% line coverage and a 60% kill rate has tests that run the code but don't verify what it does. A codebase with 70% coverage and an 85% kill rate has fewer tests, but the tests it has actually work.
+
+Mutagen supports 9 mutation operators: arithmetic (`+`/`-`), comparison (`>`/`>=`, `==`/`!=`), logical (`&&`/`||`), boolean (`true`/`false`), nil check removal, return value replacement, compound assignment (`+=`/`-=`), branch removal (else blocks, switch cases), and bitwise (`&`/`|`, `<<`/`>>`). It uses coverage-guided filtering to skip uncovered lines, parallel execution with Go's `-overlay` flag for filesystem isolation, incremental caching to skip unchanged code, per-test coverage mapping to run only relevant tests per mutation, diff-only mode for CI, and arid-line detection to skip logging and boilerplate.
