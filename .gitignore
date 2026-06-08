@@ -1,0 +1,5 @@
+.mutagen-cache/
+.mutagen.yaml
+*.out
+/mutagen
+report.html
