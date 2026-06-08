@@ -1,0 +1,23 @@
+packages:
+  - ./...
+workers: 4
+timeout: 30s
+threshold: 0
+output: text
+html: ""
+cache_dir: .mutagen-cache
+no_cache: false
+# diff: main
+exclude:
+  - "*_mock.go"
+  - "*.pb.go"
+# mutators:
+#   - arithmetic
+#   - comparison
+#   - logical
+#   - boolean
+#   - nilcheck
+#   - returnval
+#   - assignment
+#   - branch
+#   - bitwise
