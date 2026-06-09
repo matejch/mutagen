@@ -91,18 +91,62 @@ func (e *Engine) Run() ([]mutator.Result, error) {
 		}
 	}
 
-	allMutations := e.collectMutations(pkgs)
+	// Group mutations by package and process one at a time
+	mutators := e.enabledMutators()
+	fileLines := make(map[string][]string)
+	var allResults []mutator.Result
+	totalMutations := 0
 
-	if e.cfg.Verbose {
-		fmt.Fprintf(os.Stderr, "Found %d mutations across %d packages\n", len(allMutations), len(pkgs))
+	for _, pkg := range pkgs {
+		var pkgMutations []mutator.Mutation
+		for _, file := range pkg.Syntax {
+			filename := e.fset.Position(file.Pos()).Filename
+			muts := e.collectFileMutations(pkg, file, filename, mutators, fileLines)
+			pkgMutations = append(pkgMutations, muts...)
+		}
+
+		if len(pkgMutations) == 0 {
+			continue
+		}
+
+		totalMutations += len(pkgMutations)
+
+		if e.cfg.Verbose {
+			fmt.Fprintf(os.Stderr, "\n--- %s (%d mutations) ---\n", pkg.PkgPath, len(pkgMutations))
+		}
+
+		results, err := e.runWithCache(pkgMutations)
+		if err != nil {
+			return nil, fmt.Errorf("package %s: %w", pkg.PkgPath, err)
+		}
+
+		if e.cfg.Verbose {
+			killed, survived := 0, 0
+			for _, r := range results {
+				switch r.Status {
+				case mutator.StatusKilled:
+					killed++
+				case mutator.StatusSurvived:
+					survived++
+				}
+			}
+			tested := killed + survived
+			rate := 0.0
+			if tested > 0 {
+				rate = float64(killed) / float64(tested) * 100
+			}
+			fmt.Fprintf(os.Stderr, "--- %s: %d killed, %d survived (%.1f%%) ---\n", pkg.PkgPath, killed, survived, rate)
+		}
+
+		allResults = append(allResults, results...)
 	}
 
-	if len(allMutations) == 0 {
+	if totalMutations == 0 {
 		fmt.Fprintf(os.Stderr, "No mutations found.\n")
 		return nil, nil
 	}
 
-	return e.runWithCache(allMutations)
+	return allResults, nil
 }
 
 func (e *Engine) runResumed() ([]mutator.Result, error) {
@@ -146,22 +190,6 @@ func (e *Engine) runResumed() ([]mutator.Result, error) {
 	}
 
 	return runResults, nil
-}
-
-func (e *Engine) collectMutations(pkgs []*packages.Package) []mutator.Mutation {
-	mutators := e.enabledMutators()
-	fileLines := make(map[string][]string)
-	var all []mutator.Mutation
-
-	for _, pkg := range pkgs {
-		for _, file := range pkg.Syntax {
-			filename := e.fset.Position(file.Pos()).Filename
-			muts := e.collectFileMutations(pkg, file, filename, mutators, fileLines)
-			all = append(all, muts...)
-		}
-	}
-
-	return all
 }
 
 func (e *Engine) collectFileMutations(
