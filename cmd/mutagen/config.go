@@ -25,6 +25,9 @@ type fileConfig struct {
 	Mutators     []string      `yaml:"mutators"`
 	Coverprofile string        `yaml:"coverprofile"`
 	DiffBase     string        `yaml:"diff"`
+	TestRun      string        `yaml:"test_run"`
+	TestTags     string        `yaml:"test_tags"`
+	Short        bool          `yaml:"short"`
 }
 
 // loadConfigFile loads configuration from a YAML file.

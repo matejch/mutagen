@@ -162,8 +162,13 @@ func (r *Runner) executeTest(mut mutator.Mutation, overlayPath string, start tim
 		if pattern := r.testMap.RunPattern(mut.File, mut.Line); pattern != "" {
 			args = append(args, "-run", pattern)
 		}
+	} else if r.cfg.TestRun != "" {
+		args = append(args, "-run", r.cfg.TestRun)
 	}
-	if !r.cfg.Verbose {
+	if r.cfg.TestTags != "" {
+		args = append(args, "-tags", r.cfg.TestTags)
+	}
+	if r.cfg.Short {
 		args = append(args, "-short")
 	}
 	args = append(args, mut.Package)

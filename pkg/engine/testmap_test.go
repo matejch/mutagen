@@ -83,7 +83,7 @@ func TestTestMapBuildIntegration(t *testing.T) {
 	}
 
 	// Use absolute package path
-	tm, err := BuildTestMap([]string{modRoot + "/examples/sample"}, false)
+	tm, err := BuildTestMap([]string{modRoot + "/examples/sample"}, "", false)
 	if err != nil {
 		t.Skipf("skipping: %v", err)
 	}

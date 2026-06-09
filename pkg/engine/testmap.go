@@ -18,7 +18,7 @@ type TestMap struct {
 // BuildTestMap profiles each test function individually to build a
 // line-to-test mapping. This is expensive (one `go test -run` per test)
 // but the result is cached.
-func BuildTestMap(packages []string, verbose bool) (*TestMap, error) {
+func BuildTestMap(packages []string, testRunFilter string, verbose bool) (*TestMap, error) {
 	if verbose {
 		fmt.Fprintf(os.Stderr, "Building per-test coverage map...\n")
 	}
@@ -30,6 +30,15 @@ func BuildTestMap(packages []string, verbose bool) (*TestMap, error) {
 	}
 	defer os.RemoveAll(tmpDir)
 
+	var runFilter *regexp.Regexp
+	if testRunFilter != "" {
+		var err error
+		runFilter, err = regexp.Compile(testRunFilter)
+		if err != nil {
+			return nil, fmt.Errorf("invalid -test-run pattern: %w", err)
+		}
+	}
+
 	for _, pkg := range packages {
 		tests, err := listTestFunctions(pkg)
 		if err != nil {
@@ -37,6 +46,16 @@ func BuildTestMap(packages []string, verbose bool) (*TestMap, error) {
 				fmt.Fprintf(os.Stderr, "Warning: could not list tests for %s: %v\n", pkg, err)
 			}
 			continue
+		}
+
+		if runFilter != nil {
+			var filtered []string
+			for _, t := range tests {
+				if runFilter.MatchString(t) {
+					filtered = append(filtered, t)
+				}
+			}
+			tests = filtered
 		}
 
 		if verbose {

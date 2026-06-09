@@ -28,6 +28,9 @@ type Config struct {
 	DiffBase        string   // Git base ref for diff-only mode (e.g., "main")
 	Mutators        []string // Enabled mutator names (empty = all)
 	PerTestCoverage bool     // Build per-test coverage map for targeted test execution
+	TestRun         string   // -run pattern forwarded to go test
+	TestTags        string   // -tags forwarded to go test
+	Short           bool     // pass -short to go test
 }
 
 type Engine struct {
@@ -319,7 +322,7 @@ func (e *Engine) buildTestMap() error {
 		}
 	}
 
-	tm, err := BuildTestMap(e.cfg.Packages, e.cfg.Verbose)
+	tm, err := BuildTestMap(e.cfg.Packages, e.cfg.TestRun, e.cfg.Verbose)
 	if err != nil {
 		return err
 	}

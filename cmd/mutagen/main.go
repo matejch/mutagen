@@ -89,6 +89,9 @@ func parseConfig() (engine.Config, int) {
 		coverprofile string
 		diffBase     string
 		perTest      bool
+		testRun      string
+		testTags     string
+		short        bool
 		configFile   string
 	)
 
@@ -105,6 +108,9 @@ func parseConfig() (engine.Config, int) {
 	flag.StringVar(&coverprofile, "coverprofile", "", "path to existing coverage profile")
 	flag.StringVar(&diffBase, "diff", "", "only mutate lines changed since this git ref (e.g., main)")
 	flag.BoolVar(&perTest, "per-test", false, "build per-test coverage map for targeted test execution")
+	flag.StringVar(&testRun, "test-run", "", "regex filter forwarded as -run to go test")
+	flag.StringVar(&testTags, "test-tags", "", "build tags forwarded as -tags to go test")
+	flag.BoolVar(&short, "short", false, "pass -short to go test (skips long-running tests)")
 	flag.StringVar(&configFile, "config", "", "path to config file (default: .mutagen.yaml)")
 
 	flag.Usage = func() {
@@ -148,6 +154,9 @@ func parseConfig() (engine.Config, int) {
 		Coverprofile:    coalesceString(flagSet("coverprofile"), coverprofile, fileCfg.Coverprofile, ""),
 		DiffBase:        coalesceString(flagSet("diff"), diffBase, fileCfg.DiffBase, ""),
 		PerTestCoverage: perTest,
+		TestRun:         coalesceString(flagSet("test-run"), testRun, fileCfg.TestRun, ""),
+		TestTags:        coalesceString(flagSet("test-tags"), testTags, fileCfg.TestTags, ""),
+		Short:           short || fileCfg.Short,
 		Mutators:        mergeSlices([]string(enableMut), fileCfg.Mutators),
 	}
 
