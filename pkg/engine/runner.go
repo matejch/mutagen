@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -209,6 +210,49 @@ func (r *Runner) executeTest(mut mutator.Mutation, overlayPath string, start tim
 	if r.cfg.MemLimit != "" {
 		cmd.Env = append(os.Environ(), "GOMEMLIMIT="+r.cfg.MemLimit)
 	}
+
+	// Start memory watchdog if limit is set
+	var memKilled atomic.Bool
+	if r.cfg.MemLimit != "" {
+		if limitBytes, err := parseMemLimit(r.cfg.MemLimit); err == nil && limitBytes > 0 {
+			var buf bytes.Buffer
+			cmd.Stdout = &buf
+			cmd.Stderr = &buf
+
+			if startErr := cmd.Start(); startErr != nil {
+				return r.errResult(mut, start, "start error: %v", startErr)
+			}
+			done := make(chan struct{})
+			go watchMemory(cmd.Process.Pid, limitBytes, done, func() {
+				memKilled.Store(true)
+			})
+			waitErr := cmd.Wait()
+			close(done)
+
+			duration := time.Since(start).Seconds()
+			outStr := buf.String()
+
+			if memKilled.Load() {
+				return mutator.Result{
+					Mutation: mut,
+					Status:   mutator.StatusTimeout,
+					Duration: duration,
+					Output:   fmt.Sprintf("killed: exceeded memory limit %s\n%s", r.cfg.MemLimit, outStr),
+				}
+			}
+			if ctx.Err() == context.DeadlineExceeded {
+				return mutator.Result{Mutation: mut, Status: mutator.StatusTimeout, Duration: duration, Output: outStr}
+			}
+			if waitErr != nil {
+				if isBuildError(outStr) {
+					return mutator.Result{Mutation: mut, Status: mutator.StatusBuildError, Duration: duration, Output: outStr}
+				}
+				return mutator.Result{Mutation: mut, Status: mutator.StatusKilled, Duration: duration, Output: outStr}
+			}
+			return mutator.Result{Mutation: mut, Status: mutator.StatusSurvived, Duration: duration, Output: outStr}
+		}
+	}
+
 	output, err := cmd.CombinedOutput()
 	duration := time.Since(start).Seconds()
 
