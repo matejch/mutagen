@@ -68,7 +68,7 @@ func (r *Runner) RunAll(mutations []mutator.Mutation) ([]mutator.Result, error) 
 				break
 			}
 			if r.cfg.Verbose {
-				fmt.Fprintf(os.Stderr, "\r\033[2K[%d/%d] Testing: %s", i+1, total, mut.Description)
+				fmt.Fprintf(os.Stderr, "\r\033[2K[%d/%d] %s:%d %s", i+1, total, filepath.Base(mut.File), mut.Line, mut.Description)
 			}
 			results[i] = r.testMutation(mut, 0)
 			atomic.AddInt64(&completed, 1)
@@ -120,7 +120,7 @@ func (r *Runner) runParallel(ctx context.Context, mutations []mutator.Mutation, 
 				n := int(atomic.AddInt64(completed, 1))
 				if r.cfg.Verbose {
 					mu.Lock()
-					fmt.Fprintf(os.Stderr, "\r\033[2K[%d/%d] %s — %s", n, total, item.mutation.Description, result.Status)
+					fmt.Fprintf(os.Stderr, "\r\033[2K[%d/%d] %s:%d %s — %s", n, total, filepath.Base(item.mutation.File), item.mutation.Line, item.mutation.Description, result.Status)
 					mu.Unlock()
 				}
 			}
