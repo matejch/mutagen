@@ -92,6 +92,7 @@ func parseConfig() (engine.Config, int) {
 		testRun      string
 		testTags     string
 		short        bool
+		memLimit     string
 		configFile   string
 	)
 
@@ -111,6 +112,7 @@ func parseConfig() (engine.Config, int) {
 	flag.StringVar(&testRun, "test-run", "", "regex filter forwarded as -run to go test")
 	flag.StringVar(&testTags, "test-tags", "", "build tags forwarded as -tags to go test")
 	flag.BoolVar(&short, "short", false, "pass -short to go test (skips long-running tests)")
+	flag.StringVar(&memLimit, "memlimit", "", "memory limit per test process, e.g. 512MiB (sets GOMEMLIMIT)")
 	flag.StringVar(&configFile, "config", "", "path to config file (default: .mutagen.yaml)")
 
 	flag.Usage = func() {
@@ -157,6 +159,7 @@ func parseConfig() (engine.Config, int) {
 		TestRun:         coalesceString(flagSet("test-run"), testRun, fileCfg.TestRun, ""),
 		TestTags:        coalesceString(flagSet("test-tags"), testTags, fileCfg.TestTags, ""),
 		Short:           short || fileCfg.Short,
+		MemLimit:        coalesceString(flagSet("memlimit"), memLimit, fileCfg.MemLimit, ""),
 		Mutators:        mergeSlices([]string(enableMut), fileCfg.Mutators),
 	}
 

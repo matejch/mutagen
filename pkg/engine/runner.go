@@ -8,9 +8,11 @@ import (
 	"go/token"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/matej/mutagen/pkg/mutator"
@@ -40,26 +42,55 @@ func (r *Runner) RunAll(mutations []mutator.Mutation) ([]mutator.Result, error) 
 		workers = runtime.NumCPU()
 	}
 
+	// Set up cancellation on Ctrl+C
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+	go func() {
+		<-sigCh
+		if r.cfg.Verbose {
+			fmt.Fprintf(os.Stderr, "\n\033[2KInterrupted. Saving progress...\n")
+		}
+		cancel()
+	}()
+	defer signal.Stop(sigCh)
+
 	results := make([]mutator.Result, len(mutations))
+	var completed int64
 	total := len(mutations)
 
 	if workers == 1 {
 		for i, mut := range mutations {
+			if ctx.Err() != nil {
+				break
+			}
 			if r.cfg.Verbose {
 				fmt.Fprintf(os.Stderr, "\r\033[2K[%d/%d] Testing: %s", i+1, total, mut.Description)
 			}
 			results[i] = r.testMutation(mut, 0)
+			atomic.AddInt64(&completed, 1)
 		}
 		if r.cfg.Verbose {
 			fmt.Fprintln(os.Stderr)
 		}
-		return results, nil
+	} else {
+		r.runParallel(ctx, mutations, results, &completed, workers, total)
 	}
 
-	return r.runParallel(mutations, results, workers, total)
+	done := int(atomic.LoadInt64(&completed))
+	if ctx.Err() != nil && done < total {
+		if r.cfg.Verbose {
+			fmt.Fprintf(os.Stderr, "Completed %d/%d mutations before interrupt.\n", done, total)
+		}
+	}
+
+	// Return only completed results
+	return results[:done], nil
 }
 
-func (r *Runner) runParallel(mutations []mutator.Mutation, results []mutator.Result, workers, total int) ([]mutator.Result, error) {
+func (r *Runner) runParallel(ctx context.Context, mutations []mutator.Mutation, results []mutator.Result, completed *int64, workers, total int) {
 	type work struct {
 		index    int
 		mutation mutator.Mutation
@@ -73,20 +104,22 @@ func (r *Runner) runParallel(mutations []mutator.Mutation, results []mutator.Res
 
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	completed := 0
 
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
 		go func(workerID int) {
 			defer wg.Done()
 			for item := range ch {
+				if ctx.Err() != nil {
+					return
+				}
 				result := r.testMutation(item.mutation, workerID)
 				results[item.index] = result
 
+				n := int(atomic.AddInt64(completed, 1))
 				if r.cfg.Verbose {
 					mu.Lock()
-					completed++
-					fmt.Fprintf(os.Stderr, "\r\033[2K[%d/%d] %s — %s", completed, total, item.mutation.Description, result.Status)
+					fmt.Fprintf(os.Stderr, "\r\033[2K[%d/%d] %s — %s", n, total, item.mutation.Description, result.Status)
 					mu.Unlock()
 				}
 			}
@@ -97,8 +130,6 @@ func (r *Runner) runParallel(mutations []mutator.Mutation, results []mutator.Res
 	if r.cfg.Verbose {
 		fmt.Fprintln(os.Stderr)
 	}
-
-	return results, nil
 }
 
 func (r *Runner) testMutation(mut mutator.Mutation, workerID int) mutator.Result {
@@ -175,6 +206,9 @@ func (r *Runner) executeTest(mut mutator.Mutation, overlayPath string, start tim
 
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = filepath.Dir(mut.File)
+	if r.cfg.MemLimit != "" {
+		cmd.Env = append(os.Environ(), "GOMEMLIMIT="+r.cfg.MemLimit)
+	}
 	output, err := cmd.CombinedOutput()
 	duration := time.Since(start).Seconds()
 

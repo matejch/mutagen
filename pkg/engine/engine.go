@@ -31,6 +31,7 @@ type Config struct {
 	TestRun         string   // -run pattern forwarded to go test
 	TestTags        string   // -tags forwarded to go test
 	Short           bool     // pass -short to go test
+	MemLimit        string   // memory limit per test process (e.g., "512MiB"), forwarded as GOMEMLIMIT
 }
 
 type Engine struct {
@@ -56,6 +57,13 @@ func New(cfg Config) *Engine {
 }
 
 func (e *Engine) Run() ([]mutator.Result, error) {
+	// Check for interrupted previous run
+	if !e.cfg.NoCache && HasResume(e.cfg.CacheDir) {
+		if PromptResume(e.cfg.CacheDir, e.cfg.Verbose) {
+			return e.runResumed()
+		}
+	}
+
 	if e.cfg.Verbose {
 		fmt.Fprintf(os.Stderr, "Loading packages: %v\n", e.cfg.Packages)
 	}
@@ -95,6 +103,49 @@ func (e *Engine) Run() ([]mutator.Result, error) {
 	}
 
 	return e.runWithCache(allMutations)
+}
+
+func (e *Engine) runResumed() ([]mutator.Result, error) {
+	state, err := LoadResume(e.cfg.CacheDir)
+	if err != nil {
+		return nil, fmt.Errorf("loading resume state: %w", err)
+	}
+
+	if e.cfg.Verbose {
+		fmt.Fprintf(os.Stderr, "Resuming: %d mutations remaining\n", len(state.Mutations))
+	}
+
+	runner := NewRunner(e.cfg, e.fset, e.testMap)
+	runResults, err := runner.RunAll(state.Mutations)
+	if err != nil {
+		return nil, fmt.Errorf("running mutations: %w", err)
+	}
+
+	// Cache completed results
+	var cache *Cache
+	if !e.cfg.NoCache {
+		cache = NewCache(e.cfg.CacheDir)
+		for _, res := range runResults {
+			if res.Status == mutator.StatusKilled || res.Status == mutator.StatusSurvived {
+				testFiles := FindTestFiles(res.Mutation.File)
+				cache.Store(res.Mutation, res.Status, testFiles)
+			}
+		}
+		cache.Save() //nolint:errcheck
+	}
+
+	// If still interrupted, save remaining
+	if len(runResults) < len(state.Mutations) {
+		remaining := state.Mutations[len(runResults):]
+		SaveResume(e.cfg.CacheDir, remaining, nil, 0) //nolint:errcheck
+		if e.cfg.Verbose {
+			fmt.Fprintf(os.Stderr, "Progress saved. %d mutations remaining.\n", len(remaining))
+		}
+	} else {
+		ClearResume(e.cfg.CacheDir)
+	}
+
+	return runResults, nil
 }
 
 func (e *Engine) collectMutations(pkgs []*packages.Package) []mutator.Mutation {
@@ -204,6 +255,20 @@ func (e *Engine) runWithCache(allMutations []mutator.Mutation) ([]mutator.Result
 				cache.Store(res.Mutation, res.Status, testFiles)
 			}
 		}
+
+		// If interrupted (partial results), save resume state and cache
+		if len(runResults) < len(toRun) {
+			if cache != nil {
+				cache.Save() //nolint:errcheck
+			}
+			remaining := toRun[len(runResults):]
+			if err := SaveResume(e.cfg.CacheDir, remaining, nil, 0); err == nil && e.cfg.Verbose {
+				fmt.Fprintf(os.Stderr, "Progress saved. %d mutations remaining. Run again to continue.\n", len(remaining))
+			}
+			results = append(results, runResults...)
+			return results, nil
+		}
+
 		results = append(results, runResults...)
 	}
 
@@ -212,6 +277,9 @@ func (e *Engine) runWithCache(allMutations []mutator.Mutation) ([]mutator.Result
 			fmt.Fprintf(os.Stderr, "Warning: failed to save cache: %v\n", err)
 		}
 	}
+
+	// Completed fully, clear any resume state
+	ClearResume(e.cfg.CacheDir)
 
 	return results, nil
 }

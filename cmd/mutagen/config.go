@@ -28,6 +28,7 @@ type fileConfig struct {
 	TestRun      string        `yaml:"test_run"`
 	TestTags     string        `yaml:"test_tags"`
 	Short        bool          `yaml:"short"`
+	MemLimit     string        `yaml:"memlimit"`
 }
 
 // loadConfigFile loads configuration from a YAML file.

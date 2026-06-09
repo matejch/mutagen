@@ -11,6 +11,7 @@ no_cache: false
 # test_run: "^TestUnit"    # only run tests matching this regex
 # test_tags: "!integration" # build tags forwarded to go test
 # short: true              # pass -short to go test
+# memlimit: 512MiB         # memory limit per test process (GOMEMLIMIT)
 exclude:
   - "*_mock.go"
   - "*.pb.go"
